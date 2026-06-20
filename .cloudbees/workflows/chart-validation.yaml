@@ -1,0 +1,60 @@
+apiVersion: automation.cloudbees.io/v1alpha1
+kind: Workflow
+name: chart-validation
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lint-and-template:
+    steps:
+      - name: Checkout
+        uses: cloudbees-io/checkout@v1
+
+      - name: Install Helm
+        uses: cloudbees-io/run-script@v1
+        with:
+          run: |
+            curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+            helm version
+
+      - name: Helm lint
+        uses: cloudbees-io/run-script@v1
+        with:
+          run: |
+            helm lint charts/unify-edge-runner \
+              --values charts/unify-edge-runner/ci/default-values.yaml
+
+      - name: Helm template
+        uses: cloudbees-io/run-script@v1
+        with:
+          run: |
+            helm template test-release charts/unify-edge-runner \
+              --values charts/unify-edge-runner/ci/default-values.yaml \
+              --debug
+
+      - name: Verify rendered StatefulSet
+        uses: cloudbees-io/run-script@v1
+        with:
+          run: |
+            OUTPUT=$(helm template test-release charts/unify-edge-runner \
+              --values charts/unify-edge-runner/ci/default-values.yaml)
+
+            # Verify key elements are present in the rendered output
+            echo "$OUTPUT" | grep -q "kind: StatefulSet" \
+              && echo "PASS: StatefulSet present"
+            echo "$OUTPUT" | grep -q "name: register" \
+              && echo "PASS: register init container present"
+            echo "$OUTPUT" | grep -q "name: tools-init" \
+              && echo "PASS: tools init container present"
+            echo "$OUTPUT" | grep -q "volumeClaimTemplates" \
+              && echo "PASS: volumeClaimTemplates present"
+            echo "$OUTPUT" | grep -q "secretName: test-kubeconfig" \
+              && echo "PASS: kubeconfig secret mounted"
+            echo "$OUTPUT" | grep -q "secretName: test-ssh" \
+              && echo "PASS: ssh secret mounted"

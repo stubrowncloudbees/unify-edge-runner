@@ -1,0 +1,17 @@
+apiVersion: v2
+name: unify-edge-runner
+description: >
+  Production-quality Helm chart for deploying CloudBees Unify Edge Runners
+  as a Kubernetes StatefulSet. Supports idempotent registration, pluggable
+  tool injection, and optional kubeconfig/SSH mounts.
+type: application
+version: 0.1.0
+appVersion: "latest"
+keywords:
+  - cloudbees
+  - unify
+  - edge-runner
+  - ci
+  - self-hosted
+maintainers:
+  - name: stu-brown

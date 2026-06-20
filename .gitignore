@@ -1,0 +1,13 @@
+# Helm
+*.tgz
+charts/*.tgz
+.helm/
+
+# Local overrides — never commit
+values.local.yaml
+values.override.yaml
+secrets/
+*.secret.yaml
+
+# OS
+.DS_Store

@@ -1,0 +1,227 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "edge-runner.fullname" . }}
+  labels:
+    {{- include "edge-runner.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  serviceName: {{ include "edge-runner.fullname" . }}
+  selector:
+    matchLabels:
+      {{- include "edge-runner.selectorLabels" . | nindent 6 }}
+  # Pods are updated one at a time, oldest first, with a 30s delay.
+  # This allows rolling restarts without dropping all runners simultaneously.
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 0
+  template:
+    metadata:
+      labels:
+        {{- include "edge-runner.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      initContainers:
+
+        # -----------------------------------------------------------------------
+        # Registration init container
+        #
+        # Runs once per pod lifecycle. Checks for an existing config.yaml on the
+        # PVC — if found, skips registration (idempotent). If not found:
+        #   1. Downloads the runner binary
+        #   2. Exchanges the PAT for a registration token via the Unify API
+        #   3. Calls `cloudbees-runner configure` to write config.yaml to the PVC
+        #
+        # The main container will not start until this succeeds.
+        # If the PAT is invalid or expired, this container exits non-zero and
+        # Kubernetes will restart the pod with backoff.
+        # -----------------------------------------------------------------------
+        - name: register
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -eo pipefail
+
+              WORKING_DIR="{{ .Values.runner.workingDir }}"
+              BINARY="$WORKING_DIR/cloudbees-runner"
+
+              # Skip registration if already configured (idempotent restart behaviour).
+              if [ -f "$WORKING_DIR/config.yaml" ]; then
+                echo "[register] Runner already configured — skipping registration."
+                exit 0
+              fi
+
+              mkdir -p "$WORKING_DIR"
+
+              echo "[register] Installing registration dependencies..."
+              apt-get update -qq && apt-get install -y -qq curl jq ca-certificates
+
+              echo "[register] Downloading runner binary..."
+              curl -fsSL -o "$BINARY" "{{ .Values.binaryUrl }}"
+              chmod +x "$BINARY"
+
+              echo "[register] Obtaining registration token from Unify API..."
+              API_RESPONSE=$(curl -fsSL -X POST \
+                "https://api.cloudbees.io/v1/organizations/{{ .Values.runner.orgId }}/edge/runner-token" \
+                -H "Authorization: Bearer $PAT" \
+                -H "Content-Type: application/json")
+
+              TOKEN=$(echo "$API_RESPONSE" | jq -r '.access_token // empty')
+
+              if [ -z "$TOKEN" ]; then
+                echo "[register] ERROR: Failed to obtain registration token."
+                echo "[register] API response: $API_RESPONSE"
+                exit 1
+              fi
+
+              echo "[register] Configuring runner..."
+              echo "$TOKEN" | "$BINARY" configure \
+                --working-dir "$WORKING_DIR" \
+                --labels "{{ .Values.runner.labels }}" \
+                --token-stdin
+
+              echo "[register] Registration complete."
+          env:
+            - name: PAT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "edge-runner.patSecretName" . }}
+                  key: {{ .Values.patSecret.key }}
+          volumeMounts:
+            - name: runner-data
+              mountPath: {{ .Values.runner.workingDir }}
+
+        # -----------------------------------------------------------------------
+        # Tools init container (extension point — disabled by default)
+        #
+        # When enabled, runs a user-supplied script to install tools into a
+        # shared emptyDir volume at /tools. The main container's PATH includes
+        # /tools/bin so tools are available to job scripts immediately.
+        #
+        # Enable via: --set toolsInit.enabled=true
+        # See values.yaml toolsInit.script for configuration.
+        # -----------------------------------------------------------------------
+        {{- if .Values.toolsInit.enabled }}
+        - name: tools-init
+          image: {{ .Values.toolsInit.image }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -eo pipefail
+              {{ .Values.toolsInit.script | nindent 14 }}
+          volumeMounts:
+            - name: tools
+              mountPath: /tools
+        {{- end }}
+
+      containers:
+
+        # -----------------------------------------------------------------------
+        # Main runner container
+        #
+        # Installs required runtime tools (apt + binary downloads), then starts
+        # the runner binary which polls Unify for jobs.
+        #
+        # IMPORTANT: The tool installation in the startup script is a temporary
+        # workaround until a pre-built runner image is available. It adds startup
+        # latency and introduces a dependency on external package mirrors.
+        # Track: build a Dockerfile that bakes in all required tools.
+        # -----------------------------------------------------------------------
+        - name: runner
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -eo pipefail
+
+              {{- if .Values.toolsInit.enabled }}
+              export PATH="/tools/bin:$PATH"
+              {{- end }}
+
+              echo "[runner] Installing runtime dependencies..."
+              apt-get update -qq && apt-get install -y -qq \
+                ca-certificates \
+                curl \
+                git \
+                jq \
+                python3
+
+              echo "[runner] Checking for runner binary..."
+              if [ ! -x "{{ .Values.runner.workingDir }}/cloudbees-runner" ]; then
+                echo "[runner] ERROR: runner binary not found in working dir."
+                echo "[runner] The register init container may have failed."
+                exit 1
+              fi
+
+              echo "[runner] Starting runner..."
+              exec "{{ .Values.runner.workingDir }}/cloudbees-runner" run \
+                --working-dir "{{ .Values.runner.workingDir }}"
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: runner-data
+              mountPath: {{ .Values.runner.workingDir }}
+            {{- if .Values.toolsInit.enabled }}
+            - name: tools
+              mountPath: /tools
+            {{- end }}
+            {{- if .Values.kubeconfig.enabled }}
+            - name: kubeconfig
+              mountPath: {{ .Values.kubeconfig.mountPath }}
+              subPath: config
+              readOnly: true
+            {{- end }}
+            {{- if .Values.ssh.enabled }}
+            - name: ssh
+              mountPath: {{ .Values.ssh.mountPath }}
+              readOnly: true
+            {{- end }}
+
+      volumes:
+        {{- if .Values.toolsInit.enabled }}
+        - name: tools
+          emptyDir: {}
+        {{- end }}
+        {{- if .Values.kubeconfig.enabled }}
+        - name: kubeconfig
+          secret:
+            secretName: {{ include "edge-runner.kubeconfigSecretName" . }}
+        {{- end }}
+        {{- if .Values.ssh.enabled }}
+        - name: ssh
+          secret:
+            secretName: {{ include "edge-runner.sshSecretName" . }}
+            defaultMode: 0600
+        {{- end }}
+
+  volumeClaimTemplates:
+    - metadata:
+        name: runner-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if ((.Values.storage).storageClass) }}
+        storageClassName: {{ .Values.storage.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.storage.size }}

@@ -1,0 +1,47 @@
+# CI test values used by helm lint and helm template in the validation workflow.
+# These are NOT production values — they exist only to allow the chart to render
+# without providing real secrets or org IDs.
+
+replicaCount: 1
+
+runner:
+  orgId: "00000000-0000-0000-0000-000000000000"
+  labels: "self-hosted,ci-test"
+  workingDir: /opt/runner
+
+image:
+  repository: ubuntu
+  tag: "22.04"
+  pullPolicy: IfNotPresent
+
+binaryUrl: "https://downloads.example.com/cloudbees-runner/linux/amd64/cloudbees-runner"
+
+patSecret:
+  name: "test-pat"
+  key: pat
+
+kubeconfig:
+  enabled: true
+  secretName: "test-kubeconfig"
+
+ssh:
+  enabled: true
+  secretName: "test-ssh"
+
+toolsInit:
+  enabled: true
+  image: ubuntu:22.04
+  script: |
+    mkdir -p /tools/bin
+    echo "tools init placeholder"
+
+storage:
+  size: 1Gi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

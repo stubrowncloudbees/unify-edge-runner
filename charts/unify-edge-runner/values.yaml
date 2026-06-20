@@ -1,0 +1,166 @@
+# ---------------------------------------------------------------------------
+# unify-edge-runner Helm chart — values.yaml
+#
+# All sensitive values (PAT, kubeconfig, SSH keys) must be pre-created as
+# Kubernetes Secrets BEFORE installing this chart. See README.md for the
+# exact kubectl commands.
+#
+# NEVER commit real tokens, credentials, or environment-specific values
+# to this file. Use placeholder values only.
+# ---------------------------------------------------------------------------
+
+# Number of runner replicas.
+# Each pod registers with Unify as a separate named runner.
+# Pods are named <release>-0, <release>-1, etc.
+replicaCount: 1
+
+# ---------------------------------------------------------------------------
+# Runner configuration
+# ---------------------------------------------------------------------------
+runner:
+  # CloudBees Unify organisation ID.
+  # Find it in the Unify UI under Organisation Settings.
+  # Placeholder — replace with your org ID when deploying.
+  orgId: "YOUR-ORG-ID-HERE"
+
+  # Runner labels (comma-separated).
+  # Jobs are dispatched to runners that match ALL required labels.
+  # Example: "self-hosted,k8s,arm64"
+  labels: "self-hosted"
+
+  # Working directory inside the container.
+  # The runner binary, config, and workspace live here.
+  # This path is backed by the PVC for persistence across restarts.
+  workingDir: /opt/runner
+
+# ---------------------------------------------------------------------------
+# Runner image
+# ---------------------------------------------------------------------------
+# ubuntu:22.04 is used as a convenient base while a dedicated runner image
+# is not yet available. All tooling is installed at container startup.
+# Future: replace with a pre-built image to eliminate startup latency.
+image:
+  repository: ubuntu
+  tag: "22.04"
+  pullPolicy: IfNotPresent
+
+# ---------------------------------------------------------------------------
+# Runner binary
+# ---------------------------------------------------------------------------
+# URL to download the CloudBees Unify edge runner binary.
+# Set the correct architecture for your nodes (amd64 / arm64).
+# Placeholder URL — replace with the correct download URL for your version.
+binaryUrl: "https://downloads.example.com/cloudbees-runner/linux/amd64/cloudbees-runner"
+
+# ---------------------------------------------------------------------------
+# PAT secret
+# ---------------------------------------------------------------------------
+# The chart expects a Kubernetes Secret containing the PAT used for
+# runner registration. Create it before installing:
+#
+#   kubectl create secret generic <release>-pat \
+#     --from-literal=pat='YOUR_PAT_HERE'
+#
+# If patSecret.name is empty, the chart derives the name from the release.
+patSecret:
+  name: ""   # defaults to <release>-pat
+  key: pat
+
+# ---------------------------------------------------------------------------
+# Kubeconfig mount (optional)
+# ---------------------------------------------------------------------------
+# Mount a kubeconfig into the runner so jobs can use kubectl/helm.
+# The secret must be pre-created before install:
+#
+#   kubectl create secret generic <release>-kubeconfig \
+#     --from-file=config=/path/to/kubeconfig
+#
+# Set enabled: false if your jobs do not need cluster access.
+kubeconfig:
+  enabled: false
+  secretName: ""   # defaults to <release>-kubeconfig
+  mountPath: /root/.kube/config
+
+# ---------------------------------------------------------------------------
+# SSH mount (optional)
+# ---------------------------------------------------------------------------
+# Mount SSH keys so jobs can clone from private Git repositories.
+# The secret must be pre-created before install:
+#
+#   kubectl create secret generic <release>-ssh \
+#     --from-file=id_rsa=/path/to/private_key \
+#     --from-file=known_hosts=/path/to/known_hosts
+#
+# Set enabled: false if your jobs do not need SSH-based Git access.
+ssh:
+  enabled: false
+  secretName: ""   # defaults to <release>-ssh
+  mountPath: /root/.ssh
+
+# ---------------------------------------------------------------------------
+# Tools init container (extension point)
+# ---------------------------------------------------------------------------
+# An optional init container that runs before the main runner container.
+# Use this to inject additional tools into the shared /tools volume.
+# The /tools directory is mounted into the main container at the same path.
+#
+# Set enabled: true and provide a script to install tools.
+# The main container's PATH includes /tools/bin automatically.
+#
+# Example use cases:
+#   - Inject a specific kubectl version
+#   - Install cloud CLIs (aws, gcloud, az)
+#   - Install language runtimes
+#
+# When disabled, the built-in apt/download installs in the main container
+# startup script handle basic tooling.
+toolsInit:
+  enabled: false
+  image: ubuntu:22.04
+  # Shell script executed by the tools init container.
+  # Place binaries into /tools/bin — mounted as emptyDir, shared with main.
+  script: |
+    mkdir -p /tools/bin
+    # Example: install a specific kubectl version
+    # curl -sL -o /tools/bin/kubectl \
+    #   "https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl"
+    # chmod +x /tools/bin/kubectl
+
+# ---------------------------------------------------------------------------
+# Persistence
+# ---------------------------------------------------------------------------
+# PVC per replica, used to persist runner registration config across restarts.
+# Without this, the runner would re-register on every pod restart, creating
+# stale runner entries in Unify.
+storage:
+  size: 1Gi
+  # storageClass: ""  # Leave empty to use the cluster default StorageClass.
+  # Uncomment and set if you need a specific StorageClass:
+  # storageClass: "local-path"
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+# Runners are not CPU/memory intensive at idle.
+# Adjust limits based on the workloads your jobs execute.
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# ---------------------------------------------------------------------------
+# Pod scheduling
+# ---------------------------------------------------------------------------
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# ---------------------------------------------------------------------------
+# Service account
+# ---------------------------------------------------------------------------
+serviceAccount:
+  create: false
+  name: ""

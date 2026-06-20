@@ -1,0 +1,28 @@
+CloudBees Unify Edge Runner deployed.
+
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+Replicas: {{ .Values.replicaCount }}
+Runner labels: {{ .Values.runner.labels }}
+
+Check runner pod status:
+  kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }} -n {{ .Release.Namespace }}
+
+Follow logs for the first pod:
+  kubectl logs -f {{ include "edge-runner.fullname" . }}-0 -n {{ .Release.Namespace }}
+
+Check init container logs (registration):
+  kubectl logs {{ include "edge-runner.fullname" . }}-0 -c register -n {{ .Release.Namespace }}
+
+If registration fails (PAT expired or invalid):
+  1. Update the PAT secret:
+       kubectl create secret generic {{ include "edge-runner.patSecretName" . }} \
+         --from-literal=pat='YOUR_NEW_PAT' \
+         --dry-run=client -o yaml | kubectl apply -f -
+  2. Restart the StatefulSet:
+       kubectl rollout restart statefulset/{{ include "edge-runner.fullname" . }} -n {{ .Release.Namespace }}
+
+Scale up/down:
+  helm upgrade {{ .Release.Name }} <chart> --reuse-values --set replicaCount=3
+
+See docs/operations.md for the full operational runbook.
