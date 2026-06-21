@@ -17,23 +17,14 @@ jobs:
       - name: Checkout
         uses: cloudbees-io/checkout@v1
 
-      - name: Install Helm
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-          helm version
-
       - name: Helm lint
+        uses: docker://alpine/helm:3.14.0
         run: |
           helm lint charts/unify-edge-runner \
             --values charts/unify-edge-runner/ci/default-values.yaml
 
-      - name: Helm template
-        run: |
-          helm template test-release charts/unify-edge-runner \
-            --values charts/unify-edge-runner/ci/default-values.yaml \
-            --debug
-
-      - name: Verify rendered StatefulSet
+      - name: Helm template and verify
+        uses: docker://alpine/helm:3.14.0
         run: |
           OUTPUT=$(helm template test-release charts/unify-edge-runner \
             --values charts/unify-edge-runner/ci/default-values.yaml)
