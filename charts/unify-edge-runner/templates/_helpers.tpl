@@ -38,6 +38,7 @@ helm.sh/chart: {{ include "edge-runner.chart" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
+cloudbees.io/architecture: v2
 {{- end }}
 
 {{/*
@@ -49,23 +50,15 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
-Kubeconfig secret name — defaults to <release>-kubeconfig.
+Kubeconfig secret name — required when kubeconfig.enabled=true.
 */}}
 {{- define "edge-runner.kubeconfigSecretName" -}}
-{{- if .Values.kubeconfig.secretName }}
-{{- .Values.kubeconfig.secretName }}
-{{- else }}
-{{- printf "%s-kubeconfig" (include "edge-runner.fullname" .) }}
-{{- end }}
+{{- required "kubeconfig.secretName is required when kubeconfig.enabled=true. Create the kubeconfig secret before installing the chart." .Values.kubeconfig.secretName }}
 {{- end }}
 
 {{/*
-SSH secret name — defaults to <release>-ssh.
+SSH secret name — required when ssh.enabled=true.
 */}}
 {{- define "edge-runner.sshSecretName" -}}
-{{- if .Values.ssh.secretName }}
-{{- .Values.ssh.secretName }}
-{{- else }}
-{{- printf "%s-ssh" (include "edge-runner.fullname" .) }}
-{{- end }}
+{{- required "ssh.secretName is required when ssh.enabled=true. Create the SSH secret before installing the chart." .Values.ssh.secretName }}
 {{- end }}
