@@ -72,9 +72,10 @@ image:
 # Runner binary
 # ---------------------------------------------------------------------------
 # URL to download the CloudBees Unify edge runner binary.
-# Set the correct architecture for your nodes (amd64 / arm64).
-# Placeholder URL — replace with the correct download URL for your version.
-binaryUrl: "https://downloads.example.com/cloudbees-runner/linux/amd64/cloudbees-runner"
+# Use {arch} as a placeholder — it is substituted at runtime with amd64 or arm64
+# based on the node architecture detected via `uname -m`.
+# Example: https://downloads.example.com/cloudbees-runner/linux/{arch}/cloudbees-runner
+binaryUrl: "https://downloads.example.com/cloudbees-runner/linux/{arch}/cloudbees-runner"
 
 # ---------------------------------------------------------------------------
 # Kubeconfig secret reference (optional)

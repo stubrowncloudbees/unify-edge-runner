@@ -73,8 +73,19 @@ spec:
               echo "[register] Installing registration dependencies..."
               apt-get update -qq && apt-get install -y -qq curl jq ca-certificates
 
-              echo "[register] Downloading runner binary..."
-              curl -fsSL -o "$BINARY" "{{ .Values.binaryUrl }}"
+              echo "[register] Detecting architecture..."
+              UNAME_ARCH=$(uname -m)
+              case "${UNAME_ARCH}" in
+                x86_64)  ARCH="amd64" ;;
+                aarch64) ARCH="arm64" ;;
+                *)        echo "[register] ERROR: Unsupported architecture: ${UNAME_ARCH}"; exit 1 ;;
+              esac
+              echo "[register] Architecture: ${ARCH}"
+
+              BINARY_URL="{{ .Values.binaryUrl }}"
+              BINARY_URL="${BINARY_URL/\{arch\}/${ARCH}}"
+              echo "[register] Downloading runner binary from: ${BINARY_URL}"
+              curl -fsSL --max-time 300 -o "$BINARY" "${BINARY_URL}"
               chmod +x "$BINARY"
 
               echo "[register] Obtaining registration token from Unify API..."

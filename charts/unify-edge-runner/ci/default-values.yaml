@@ -33,6 +33,8 @@ toolsInit:
     mkdir -p /tools/bin
     echo "tools init placeholder"
 
+binaryUrl: "https://downloads.example.com/cloudbees-runner/linux/{arch}/cloudbees-runner"
+
 storage:
   size: 1Gi
 
