@@ -36,6 +36,20 @@ toolsInit:
 storage:
   size: 1Gi
 
+reconciler:
+  enabled: true
+  mode: audit
+  image:
+    repository: alpine
+    tag: "3.20"
+    pullPolicy: IfNotPresent
+  hookJob:
+    enabled: true
+    hookDeletePolicy: before-hook-creation,hook-succeeded
+  cronJob:
+    enabled: true
+    schedule: "*/15 * * * *"
+
 resources:
   requests:
     cpu: 100m

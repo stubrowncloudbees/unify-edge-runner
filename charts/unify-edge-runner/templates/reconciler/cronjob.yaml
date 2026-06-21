@@ -1,0 +1,43 @@
+{{- if and .Values.reconciler.enabled .Values.reconciler.cronJob.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "edge-runner.fullname" . }}-reconciler
+  labels:
+    {{- include "edge-runner.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.reconciler.cronJob.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 120
+      template:
+        metadata:
+          labels:
+            {{- include "edge-runner.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: reconciler
+            cloudbees.io/architecture: v2
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ include "edge-runner.fullname" . }}-reconciler
+          containers:
+            - name: reconciler
+              image: "{{ .Values.reconciler.image.repository }}:{{ .Values.reconciler.image.tag }}"
+              imagePullPolicy: {{ .Values.reconciler.image.pullPolicy }}
+              command:
+                - /bin/sh
+                - /scripts/reconcile.sh
+              env:
+                {{- include "edge-runner.reconcilerEnv" . | nindent 16 }}
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+          volumes:
+            - name: scripts
+              configMap:
+                name: {{ include "edge-runner.fullname" . }}-reconciler
+                defaultMode: 0755
+{{- end }}

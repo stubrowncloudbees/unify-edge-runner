@@ -1,0 +1,166 @@
+{{- if .Values.reconciler.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "edge-runner.fullname" . }}-reconciler
+  labels:
+    {{- include "edge-runner.labels" . | nindent 4 }}
+data:
+  reconcile.sh: |
+    #!/bin/sh
+    set -eu
+
+    # ---------------------------------------------------------------------------
+    # Unify Edge Runner reconciler
+    #
+    # Reads StatefulSet replica count (Kubernetes is the source of truth).
+    # Builds expected runner names from runner prefix and replica count.
+    # Queries Unify for registered runners matching this deployment's prefix.
+    # Calculates stale = actual - expected.
+    # Audit mode: logs stale runners, no deletion.
+    # Cleanup mode: deletes stale runners from Unify.
+    #
+    # Required environment variables (injected by Job / CronJob):
+    #   UNIFY_API_URL        - e.g. https://api.cloudbees.io
+    #   ORG_ID               - Unify organisation ID
+    #   RUNNER_NAME_PREFIX   - e.g. k8s-v2
+    #   STATEFULSET_NAME     - full StatefulSet name, e.g. k8s-v2-unify-edge-runner
+    #   NAMESPACE            - Kubernetes namespace
+    #   MODE                 - audit or cleanup
+    #   PAT                  - Unify PAT (from secret, not logged)
+    #   K8S_API              - Kubernetes API server (defaults to in-cluster)
+    #   K8S_TOKEN            - ServiceAccount token (defaults to in-cluster path)
+    #   K8S_CA               - CA cert path (defaults to in-cluster path)
+    # ---------------------------------------------------------------------------
+
+    apk add --no-cache curl jq > /dev/null 2>&1
+
+    K8S_API="${K8S_API:-https://kubernetes.default.svc}"
+    K8S_TOKEN="${K8S_TOKEN:-$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)}"
+    K8S_CA="${K8S_CA:-/var/run/secrets/kubernetes.io/serviceaccount/ca.crt}"
+
+    # -------------------------------------------------------------------------
+    # Step 1: Read StatefulSet replica count from Kubernetes API
+    # -------------------------------------------------------------------------
+    echo "[reconciler] Reading StatefulSet: ${STATEFULSET_NAME} in ${NAMESPACE}"
+
+    STS_RESPONSE=$(curl -sS --cacert "${K8S_CA}" \
+      -H "Authorization: Bearer ${K8S_TOKEN}" \
+      "${K8S_API}/apis/apps/v1/namespaces/${NAMESPACE}/statefulsets/${STATEFULSET_NAME}")
+
+    REPLICAS=$(echo "${STS_RESPONSE}" | jq -r '.spec.replicas // 0')
+
+    if [ -z "${REPLICAS}" ] || [ "${REPLICAS}" = "null" ]; then
+      echo "[reconciler] ERROR: Could not read replica count from StatefulSet."
+      echo "[reconciler] Response: $(echo "${STS_RESPONSE}" | jq -r '.message // "unknown error"')"
+      exit 1
+    fi
+
+    echo "[reconciler] StatefulSet replicas: ${REPLICAS}"
+
+    # -------------------------------------------------------------------------
+    # Step 2: Build expected runner names
+    # -------------------------------------------------------------------------
+    EXPECTED=""
+    i=0
+    while [ "${i}" -lt "${REPLICAS}" ]; do
+      EXPECTED="${EXPECTED}${RUNNER_NAME_PREFIX}-${i}"$'\n'
+      i=$((i + 1))
+    done
+
+    echo "[reconciler] Expected:"
+    echo "${EXPECTED}" | sed '/^$/d' | sed 's/^/  /'
+
+    # -------------------------------------------------------------------------
+    # Step 3: Query Unify for registered runners
+    # -------------------------------------------------------------------------
+    RUNNERS_RESPONSE=$(curl -sS -X GET \
+      "${UNIFY_API_URL}/v1/organizations/${ORG_ID}/edge/runners" \
+      -H "Authorization: Bearer ${PAT}" \
+      -H "Content-Type: application/json")
+
+    if ! echo "${RUNNERS_RESPONSE}" | jq -e '.runners' > /dev/null 2>&1; then
+      echo "[reconciler] ERROR: Unexpected API response structure."
+      echo "[reconciler] Response did not contain .runners field."
+      exit 1
+    fi
+
+    # -------------------------------------------------------------------------
+    # Step 4: Filter runners belonging to this deployment by name prefix
+    # -------------------------------------------------------------------------
+    ACTUAL_JSON=$(echo "${RUNNERS_RESPONSE}" | jq \
+      --arg prefix "${RUNNER_NAME_PREFIX}-" \
+      '[.runners[] | select(.name | startswith($prefix))]')
+
+    ACTUAL_NAMES=$(echo "${ACTUAL_JSON}" | jq -r '.[].name')
+
+    echo "[reconciler] Actual (matching prefix \"${RUNNER_NAME_PREFIX}-\"):"
+    if [ -z "${ACTUAL_NAMES}" ]; then
+      echo "  (none)"
+    else
+      echo "${ACTUAL_NAMES}" | sed 's/^/  /'
+    fi
+
+    # -------------------------------------------------------------------------
+    # Step 5: Calculate stale = actual - expected
+    # -------------------------------------------------------------------------
+    STALE_JSON=$(echo "${ACTUAL_JSON}" | jq \
+      --argjson expected "$(echo "${EXPECTED}" | sed '/^$/d' | jq -R . | jq -s .)" \
+      '[.[] | select(.name as $n | $expected | index($n) | not)]')
+
+    STALE_NAMES=$(echo "${STALE_JSON}" | jq -r '.[].name')
+
+    if [ -z "${STALE_NAMES}" ]; then
+      echo "[reconciler] Stale: (none)"
+      echo "[reconciler] Nothing to do."
+      exit 0
+    fi
+
+    echo "[reconciler] Stale:"
+    echo "${STALE_NAMES}" | sed 's/^/  /'
+
+    # -------------------------------------------------------------------------
+    # Step 6: Mode-dependent behaviour
+    # -------------------------------------------------------------------------
+    echo "[reconciler] Mode: ${MODE}"
+
+    if [ "${MODE}" = "audit" ]; then
+      echo "[reconciler] Would delete:"
+      echo "${STALE_NAMES}" | sed 's/^/  /'
+      echo "[reconciler] Audit mode — no changes made."
+      exit 0
+    fi
+
+    if [ "${MODE}" = "cleanup" ]; then
+      echo "${STALE_JSON}" | jq -c '.[]' | while IFS= read -r runner; do
+        NAME=$(echo "${runner}" | jq -r '.name')
+        ID=$(echo "${runner}" | jq -r '.id')
+
+        echo "[reconciler] Deleting: ${NAME} (${ID})"
+
+        HTTP_STATUS=$(curl -sS -o /tmp/delete_response.json -w "%{http_code}" \
+          -X DELETE \
+          "${UNIFY_API_URL}/v1/organizations/${ORG_ID}/edge/runners/${ID}" \
+          -H "Authorization: Bearer ${PAT}")
+
+        if [ "${HTTP_STATUS}" = "200" ]; then
+          echo "[reconciler] Deleted: ${NAME}"
+        elif [ "${HTTP_STATUS}" = "500" ]; then
+          MSG=$(jq -r '.message // "unknown"' /tmp/delete_response.json 2>/dev/null || echo "unknown")
+          if echo "${MSG}" | grep -q "record not found"; then
+            echo "[reconciler] Already removed: ${NAME} (skipping)"
+          else
+            echo "[reconciler] WARNING: Unexpected error deleting ${NAME}: ${MSG}"
+          fi
+        else
+          echo "[reconciler] WARNING: Unexpected HTTP ${HTTP_STATUS} deleting ${NAME}"
+        fi
+      done
+
+      echo "[reconciler] Cleanup complete."
+      exit 0
+    fi
+
+    echo "[reconciler] ERROR: Unknown mode: ${MODE}. Expected audit or cleanup."
+    exit 1
+{{- end }}

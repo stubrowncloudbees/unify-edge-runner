@@ -29,9 +29,17 @@ jobs:
           OUTPUT=$(helm template test-release charts/unify-edge-runner \
             --values charts/unify-edge-runner/ci/default-values.yaml)
 
-          echo "$OUTPUT" | grep -q "kind: StatefulSet"    && echo "PASS: StatefulSet present"
-          echo "$OUTPUT" | grep -q "name: register"       && echo "PASS: register init container present"
-          echo "$OUTPUT" | grep -q "name: tools-init"     && echo "PASS: tools init container present"
-          echo "$OUTPUT" | grep -q "volumeClaimTemplates" && echo "PASS: volumeClaimTemplates present"
-          echo "$OUTPUT" | grep -q "test-kubeconfig"      && echo "PASS: kubeconfig secret mounted"
-          echo "$OUTPUT" | grep -q "test-ssh"             && echo "PASS: ssh secret mounted"
+          echo "$OUTPUT" | grep -q "kind: StatefulSet"         && echo "PASS: StatefulSet present"
+          echo "$OUTPUT" | grep -q "name: register"            && echo "PASS: register init container present"
+          echo "$OUTPUT" | grep -q "name: tools-init"          && echo "PASS: tools init container present"
+          echo "$OUTPUT" | grep -q "volumeClaimTemplates"      && echo "PASS: volumeClaimTemplates present"
+          echo "$OUTPUT" | grep -q "test-kubeconfig"           && echo "PASS: kubeconfig secret mounted"
+          echo "$OUTPUT" | grep -q "test-ssh"                  && echo "PASS: ssh secret mounted"
+          echo "$OUTPUT" | grep -q "kind: CronJob"             && echo "PASS: CronJob present"
+          echo "$OUTPUT" | grep -q "kind: Job"                 && echo "PASS: hook Job present"
+          echo "$OUTPUT" | grep -q "kind: ServiceAccount"      && echo "PASS: ServiceAccount present"
+          echo "$OUTPUT" | grep -q "kind: Role"                && echo "PASS: Role present"
+          echo "$OUTPUT" | grep -q "kind: RoleBinding"         && echo "PASS: RoleBinding present"
+          echo "$OUTPUT" | grep -q "kind: ConfigMap"           && echo "PASS: ConfigMap present"
+          echo "$OUTPUT" | grep -q "helm.sh/hook"              && echo "PASS: hook annotation present"
+          echo "$OUTPUT" | grep -q "cloudbees.io/architecture" && echo "PASS: v2 label present"

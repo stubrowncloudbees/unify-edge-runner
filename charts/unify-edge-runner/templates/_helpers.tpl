@@ -50,6 +50,29 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
+Reconciler environment variables — shared by hookJob and cronJob.
+*/}}
+{{- define "edge-runner.reconcilerEnv" -}}
+- name: UNIFY_API_URL
+  value: {{ .Values.unify.apiUrl | quote }}
+- name: ORG_ID
+  value: {{ .Values.unify.orgId | quote }}
+- name: RUNNER_NAME_PREFIX
+  value: {{ .Values.runner.name | quote }}
+- name: STATEFULSET_NAME
+  value: {{ include "edge-runner.fullname" . | quote }}
+- name: NAMESPACE
+  value: {{ .Release.Namespace | quote }}
+- name: MODE
+  value: {{ .Values.reconciler.mode | quote }}
+- name: PAT
+  valueFrom:
+    secretKeyRef:
+      name: {{ required "patSecret.name is required. Create the PAT secret before installing the chart." .Values.patSecret.name }}
+      key: {{ .Values.patSecret.key }}
+{{- end }}
+
+{{/*
 Kubeconfig secret name — required when kubeconfig.enabled=true.
 */}}
 {{- define "edge-runner.kubeconfigSecretName" -}}

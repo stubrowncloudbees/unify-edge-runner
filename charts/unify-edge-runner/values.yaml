@@ -164,6 +164,58 @@ tolerations: []
 affinity: {}
 
 # ---------------------------------------------------------------------------
+# Reconciler
+# ---------------------------------------------------------------------------
+# Detects and removes stale runner registrations in Unify after scale-down.
+#
+# Kubernetes is the source of truth — the reconciler reads the StatefulSet
+# replica count directly and never duplicates it here.
+#
+# Two mechanisms:
+#   - Job (Helm hook): runs automatically on every helm install / upgrade
+#   - CronJob: runs periodically to catch drift
+#
+# Mode:
+#   audit   — log stale runners, no deletion (default, safe)
+#   cleanup — delete stale runners from Unify
+#
+# Cleanup mode must be set explicitly:
+#   helm upgrade ... --set reconciler.mode=cleanup
+#
+# The reconciler only deletes runners that:
+#   - match the runner.name prefix
+#   - are NOT in the expected set (derived from StatefulSet replicas)
+#
+# It will never touch runners from other deployments or other releases.
+reconciler:
+  enabled: true
+
+  # audit (default) or cleanup.
+  # audit: log stale runners, no deletion.
+  # cleanup: delete stale runners from Unify.
+  # Cleanup must be set explicitly — audit is always the safe default.
+  mode: audit
+
+  image:
+    repository: alpine
+    tag: "3.20"
+    pullPolicy: IfNotPresent
+
+  # Helm post-install/post-upgrade hook Job.
+  # Runs automatically after every helm install or helm upgrade.
+  hookJob:
+    enabled: true
+    # before-hook-creation cleans up any prior failed run before launching.
+    # hook-succeeded removes the Job on clean completion.
+    hookDeletePolicy: before-hook-creation,hook-succeeded
+
+  # Periodic CronJob for drift detection and ongoing reconciliation.
+  # Manual trigger: kubectl create job reconcile-now --from=cronjob/<name> -n <ns>
+  cronJob:
+    enabled: true
+    schedule: "*/15 * * * *"
+
+# ---------------------------------------------------------------------------
 # Service account
 # ---------------------------------------------------------------------------
 serviceAccount:
