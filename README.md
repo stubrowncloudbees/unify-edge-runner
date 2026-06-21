@@ -44,28 +44,28 @@ kubectl create secret generic edge-runner-ssh \
 helm repo add unify-edge-runner https://stubrowncloudbees.github.io/unify-edge-runner
 helm repo update
 
-helm upgrade --install unify-edge-runner unify-edge-runner/unify-edge-runner \
+helm install my-runners unify-edge-runner/unify-edge-runner \
   --namespace edge-runners \
   --set unify.orgId='YOUR-ORG-ID' \
   --set runner.name='k8s-home' \
-  --set runner.labels='self-hosted,k8s' \
-  --set binaryUrl='https://downloads.example.com/cloudbees-runner/linux/amd64/cloudbees-runner' \
+  --set 'runner.labels=self-hosted\,k8s' \
   --set patSecret.name=edge-runner-pat
 ```
 
 Each replica registers in Unify as `<name>-<index>` — e.g. `k8s-home-0`, `k8s-home-1`.
+
+The runner binary is downloaded automatically at startup. The architecture (`amd64` or `arm64`) is detected at runtime — the same install command works on both x86 and ARM clusters.
 
 The chart will fail with a clear error if `patSecret.name` is not provided.
 
 ### With optional mounts
 
 ```bash
-helm upgrade --install unify-edge-runner unify-edge-runner/unify-edge-runner \
+helm install my-runners unify-edge-runner/unify-edge-runner \
   --namespace edge-runners \
   --set unify.orgId='YOUR-ORG-ID' \
   --set runner.name='k8s-home' \
-  --set runner.labels='self-hosted,k8s' \
-  --set binaryUrl='...' \
+  --set 'runner.labels=self-hosted\,k8s' \
   --set patSecret.name=edge-runner-pat \
   --set kubeconfig.enabled=true \
   --set kubeconfig.secretName=edge-runner-kubeconfig \
@@ -76,16 +76,26 @@ helm upgrade --install unify-edge-runner unify-edge-runner/unify-edge-runner \
 ## Scale
 
 ```bash
-helm upgrade unify-edge-runner unify-edge-runner/unify-edge-runner \
+helm upgrade my-runners unify-edge-runner/unify-edge-runner \
   --reuse-values \
   --set replicaCount=3
 ```
+
+Stale runner registrations and orphaned PVCs are cleaned up automatically after scale-down.
+
+## Uninstall
+
+```bash
+helm uninstall my-runners --namespace edge-runners
+```
+
+On uninstall, a pre-delete hook deregisters all runners from Unify and deletes all PVCs — no manual cleanup required.
 
 ## Upgrade
 
 ```bash
 helm repo update
-helm upgrade unify-edge-runner unify-edge-runner/unify-edge-runner --reuse-values
+helm upgrade my-runners unify-edge-runner/unify-edge-runner --reuse-values
 ```
 
 ## PAT rotation
@@ -96,16 +106,41 @@ kubectl create secret generic edge-runner-pat \
   --from-literal=pat='<NEW_PAT>' \
   --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl rollout restart statefulset/unify-edge-runner -n edge-runners
+kubectl rollout restart statefulset/my-runners-unify-edge-runner -n edge-runners
+```
+
+## Reconciler
+
+The chart includes a reconciler that keeps Unify in sync with the StatefulSet replica count.
+
+- **Hook Job** — runs automatically on every `helm install` and `helm upgrade`
+- **CronJob** — runs every 15 minutes to catch drift
+
+The reconciler detects stale runners (registered in Unify but no longer expected based on replica count), removes them from Unify, and deletes their PVCs. It only touches runners that match the configured `runner.name` prefix — other deployments are not affected.
+
+To trigger a manual reconcile:
+
+```bash
+kubectl create job reconcile-now \
+  --from=cronjob/my-runners-unify-edge-runner-reconciler \
+  -n edge-runners
+```
+
+## Binary download URLs
+
+The chart downloads the runner binary at container startup. The architecture is detected automatically. Official download URLs:
+
+```
+linux/amd64:   https://downloads.cloudbees.com/pub/unify-edge-runner/releases/main/linux/amd64/cloudbees-runner
+linux/arm64:   https://downloads.cloudbees.com/pub/unify-edge-runner/releases/main/linux/arm64/cloudbees-runner
+darwin/arm64:  https://downloads.cloudbees.com/pub/unify-edge-runner/releases/main/darwin/arm64/cloudbees-runner
+windows/amd64: https://downloads.cloudbees.com/pub/unify-edge-runner/releases/main/windows/amd64/cloudbees-runner
 ```
 
 ## Known limitations
 
 - Tools (apt, kubectl, helm) are installed at container startup. This adds latency and requires external network access. A pre-built image would eliminate this.
-- PVCs created by `volumeClaimTemplates` are not deleted when the release is deleted. Delete manually to force re-registration:
-  ```bash
-  kubectl delete pvc runner-data-unify-edge-runner-0 -n edge-runners
-  ```
+- Runners with an active job cannot be deregistered during scale-down or uninstall. They will be retried by the next reconciler run once the job completes.
 
 ## Values reference
 
@@ -121,13 +156,17 @@ kubectl rollout restart statefulset/unify-edge-runner -n edge-runners
 | `patSecret.key` | `pat` | Key within the PAT secret |
 | `image.repository` | `ubuntu` | Container image |
 | `image.tag` | `22.04` | Container image tag |
-| `binaryUrl` | `(placeholder)` | URL to download the runner binary |
+| `binaryUrl` | `(auto)` | Override binary download URL. Use `{arch}` as a placeholder for automatic architecture substitution. |
 | `kubeconfig.enabled` | `false` | Mount a kubeconfig secret |
 | `kubeconfig.secretName` | `""` | Name of the pre-created kubeconfig secret |
 | `ssh.enabled` | `false` | Mount SSH key secret |
 | `ssh.secretName` | `""` | Name of the pre-created SSH secret |
 | `toolsInit.enabled` | `false` | Enable tools init container extension point |
 | `storage.size` | `1Gi` | PVC size per replica |
+| `reconciler.enabled` | `true` | Enable the reconciler |
+| `reconciler.mode` | `cleanup` | `audit` (log only) or `cleanup` (delete stale runners and PVCs) |
+| `reconciler.cronJob.schedule` | `*/15 * * * *` | CronJob schedule |
+| `reconciler.hookJob.enabled` | `true` | Run reconciler on every install/upgrade |
 
 Full values documentation is in `charts/unify-edge-runner/values.yaml`.
 
