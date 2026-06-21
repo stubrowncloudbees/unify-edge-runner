@@ -13,38 +13,32 @@ jobs:
       - name: Checkout
         uses: cloudbees-io/checkout@v2
 
-      - name: Package chart
+      - name: Package and publish to GitHub Pages
         uses: docker://alpine/helm:3.14.0
         run: |
+          apk add --no-cache git
+
+          # Package the chart
+          mkdir -p .chart-output
           helm package charts/unify-edge-runner --destination .chart-output/
 
-      - name: Publish to GitHub Pages
-        uses: docker://alpine/git:latest
-        run: |
           # Configure git
           git config user.email "ci@cloudbees.com"
           git config user.name "CloudBees CI"
 
-          # Stash the packaged chart
+          # Stash the packaged chart before switching branches
           mkdir -p /tmp/chart-publish
           cp .chart-output/*.tgz /tmp/chart-publish/
 
-          # Switch to gh-pages branch (create if it doesn't exist)
-          git fetch origin gh-pages || true
-          if git show-ref --verify --quiet refs/remotes/origin/gh-pages; then
-            git checkout gh-pages
-          else
-            git checkout --orphan gh-pages
-            git rm -rf .
-          fi
+          # Switch to gh-pages branch
+          git fetch origin gh-pages
+          git checkout gh-pages
 
-          # Copy in the new chart package
+          # Copy in the new chart package and regenerate index
           cp /tmp/chart-publish/*.tgz .
-
-          # Regenerate the index
           helm repo index . --url https://stubrowncloudbees.github.io/unify-edge-runner
 
           # Commit and push
           git add index.yaml *.tgz
-          git commit -m "Publish chart $(ls /tmp/chart-publish/*.tgz | xargs basename)"
+          git commit -m "Publish $(ls /tmp/chart-publish/*.tgz | xargs basename)"
           git push origin gh-pages
