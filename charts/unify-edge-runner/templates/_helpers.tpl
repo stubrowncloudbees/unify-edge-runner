@@ -49,17 +49,6 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
-PAT secret name — defaults to <release>-pat.
-*/}}
-{{- define "edge-runner.patSecretName" -}}
-{{- if .Values.patSecret.name }}
-{{- .Values.patSecret.name }}
-{{- else }}
-{{- printf "%s-pat" (include "edge-runner.fullname" .) }}
-{{- end }}
-{{- end }}
-
-{{/*
 Kubeconfig secret name — defaults to <release>-kubeconfig.
 */}}
 {{- define "edge-runner.kubeconfigSecretName" -}}

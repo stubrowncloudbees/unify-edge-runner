@@ -1,12 +1,11 @@
 # ---------------------------------------------------------------------------
 # unify-edge-runner Helm chart — values.yaml
 #
-# All sensitive values (PAT, kubeconfig, SSH keys) must be pre-created as
-# Kubernetes Secrets BEFORE installing this chart. See README.md for the
-# exact kubectl commands.
+# Sensitive values (PAT, kubeconfig, SSH keys) are NEVER stored here.
+# All secrets must be pre-created as Kubernetes Secrets before installing
+# this chart. The chart references them by name only.
 #
-# NEVER commit real tokens, credentials, or environment-specific values
-# to this file. Use placeholder values only.
+# See README.md for the exact kubectl commands to create each secret.
 # ---------------------------------------------------------------------------
 
 # Number of runner replicas.
@@ -15,29 +14,29 @@
 replicaCount: 1
 
 # ---------------------------------------------------------------------------
+# Unify API
+# ---------------------------------------------------------------------------
+unify:
+  # CloudBees Unify API base URL.
+  apiUrl: "https://api.cloudbees.io"
+
+  # CloudBees Unify organisation ID.
+  # Find it in the Unify UI under Organisation Settings.
+  orgId: "YOUR-ORG-ID-HERE"
+
+# ---------------------------------------------------------------------------
 # Runner configuration
 # ---------------------------------------------------------------------------
 runner:
-  # CloudBees Unify organisation ID.
-  # Find it in the Unify UI under Organisation Settings.
-  # Placeholder — replace with your org ID when deploying.
-  orgId: "YOUR-ORG-ID-HERE"
-
   # Runner name prefix. Each replica registers as <name>-<index> in Unify.
   # Example: name "k8s-home" with 3 replicas registers as k8s-home-0, k8s-home-1, k8s-home-2.
   # Choose a name that is meaningful and unique within your Unify organisation.
-  name: "runner"
+  name: "edge-runner"
 
   # Runner labels (comma-separated).
   # Jobs are dispatched to runners that match ALL required labels.
   # Example: "self-hosted,k8s,arm64"
   labels: "self-hosted"
-
-  # PAT for runner registration.
-  # If set, the chart creates the secret automatically.
-  # If empty, you must pre-create the secret (see patSecret.name).
-  # NEVER commit a real PAT to values.yaml — pass via --set at install time.
-  pat: ""
 
   # Working directory inside the container.
   # The runner binary, config, and workspace live here.
@@ -45,11 +44,25 @@ runner:
   workingDir: /opt/runner
 
 # ---------------------------------------------------------------------------
+# PAT secret reference
+# ---------------------------------------------------------------------------
+# The chart reads the PAT from a pre-existing Kubernetes Secret.
+# Create the secret before installing this chart:
+#
+#   kubectl create secret generic edge-runner-pat \
+#     --namespace <namespace> \
+#     --from-literal=pat='<YOUR_PAT>'
+#
+# patSecret.name is REQUIRED. The chart will fail to render if it is empty.
+patSecret:
+  name: ""   # REQUIRED — name of the pre-created Kubernetes Secret
+  key: pat   # Key within the secret that holds the PAT value
+
+# ---------------------------------------------------------------------------
 # Runner image
 # ---------------------------------------------------------------------------
 # ubuntu:22.04 is used as a convenient base while a dedicated runner image
 # is not yet available. All tooling is installed at container startup.
-# Future: replace with a pre-built image to eliminate startup latency.
 image:
   repository: ubuntu
   tag: "22.04"
@@ -64,48 +77,36 @@ image:
 binaryUrl: "https://downloads.example.com/cloudbees-runner/linux/amd64/cloudbees-runner"
 
 # ---------------------------------------------------------------------------
-# PAT secret
+# Kubeconfig secret reference (optional)
 # ---------------------------------------------------------------------------
-# The chart expects a Kubernetes Secret containing the PAT used for
-# runner registration. Create it before installing:
+# Mount a kubeconfig into the runner so jobs can use kubectl and helm.
+# Create the secret before enabling this option:
 #
-#   kubectl create secret generic <release>-pat \
-#     --from-literal=pat='YOUR_PAT_HERE'
-#
-# If patSecret.name is empty, the chart derives the name from the release.
-patSecret:
-  name: ""   # defaults to <release>-pat
-  key: pat
-
-# ---------------------------------------------------------------------------
-# Kubeconfig mount (optional)
-# ---------------------------------------------------------------------------
-# Mount a kubeconfig into the runner so jobs can use kubectl/helm.
-# The secret must be pre-created before install:
-#
-#   kubectl create secret generic <release>-kubeconfig \
+#   kubectl create secret generic edge-runner-kubeconfig \
+#     --namespace <namespace> \
 #     --from-file=config=/path/to/kubeconfig
 #
 # Set enabled: false if your jobs do not need cluster access.
 kubeconfig:
   enabled: false
-  secretName: ""   # defaults to <release>-kubeconfig
+  secretName: ""   # REQUIRED if enabled — name of the pre-created Kubernetes Secret
   mountPath: /root/.kube/config
 
 # ---------------------------------------------------------------------------
-# SSH mount (optional)
+# SSH secret reference (optional)
 # ---------------------------------------------------------------------------
 # Mount SSH keys so jobs can clone from private Git repositories.
-# The secret must be pre-created before install:
+# Create the secret before enabling this option:
 #
-#   kubectl create secret generic <release>-ssh \
+#   kubectl create secret generic edge-runner-ssh \
+#     --namespace <namespace> \
 #     --from-file=id_rsa=/path/to/private_key \
 #     --from-file=known_hosts=/path/to/known_hosts
 #
 # Set enabled: false if your jobs do not need SSH-based Git access.
 ssh:
   enabled: false
-  secretName: ""   # defaults to <release>-ssh
+  secretName: ""   # REQUIRED if enabled — name of the pre-created Kubernetes Secret
   mountPath: /root/.ssh
 
 # ---------------------------------------------------------------------------
@@ -122,14 +123,9 @@ ssh:
 #   - Inject a specific kubectl version
 #   - Install cloud CLIs (aws, gcloud, az)
 #   - Install language runtimes
-#
-# When disabled, the built-in apt/download installs in the main container
-# startup script handle basic tooling.
 toolsInit:
   enabled: false
   image: ubuntu:22.04
-  # Shell script executed by the tools init container.
-  # Place binaries into /tools/bin — mounted as emptyDir, shared with main.
   script: |
     mkdir -p /tools/bin
     # Example: install a specific kubectl version
@@ -152,8 +148,6 @@ storage:
 # ---------------------------------------------------------------------------
 # Resources
 # ---------------------------------------------------------------------------
-# Runners are not CPU/memory intensive at idle.
-# Adjust limits based on the workloads your jobs execute.
 resources:
   requests:
     cpu: 100m

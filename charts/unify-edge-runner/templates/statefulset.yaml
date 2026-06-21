@@ -78,7 +78,7 @@ spec:
 
               echo "[register] Obtaining registration token from Unify API..."
               API_RESPONSE=$(curl -fsSL -X POST \
-                "https://api.cloudbees.io/v1/organizations/{{ .Values.runner.orgId }}/edge/runner-token" \
+                "{{ .Values.unify.apiUrl }}/v1/organizations/{{ .Values.unify.orgId }}/edge/runner-token" \
                 -H "Authorization: Bearer $PAT" \
                 -H "Content-Type: application/json")
 
@@ -105,7 +105,7 @@ spec:
             - name: PAT
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "edge-runner.patSecretName" . }}
+                  name: {{ required "patSecret.name is required. Create the PAT secret before installing the chart." .Values.patSecret.name }}
                   key: {{ .Values.patSecret.key }}
           volumeMounts:
             - name: runner-data

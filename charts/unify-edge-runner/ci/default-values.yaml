@@ -1,33 +1,30 @@
 # CI test values used by helm lint and helm template in the validation workflow.
-# These are NOT production values — they exist only to allow the chart to render
-# without providing real secrets or org IDs.
+# These are NOT production values — placeholder names only, no real secrets.
 
 replicaCount: 1
 
-runner:
+unify:
+  apiUrl: "https://api.cloudbees.io"
   orgId: "00000000-0000-0000-0000-000000000000"
+
+runner:
   name: "ci-test-runner"
   labels: "self-hosted,ci-test"
   workingDir: /opt/runner
 
-image:
-  repository: ubuntu
-  tag: "22.04"
-  pullPolicy: IfNotPresent
-
-binaryUrl: "https://downloads.example.com/cloudbees-runner/linux/amd64/cloudbees-runner"
-
+# patSecret.name must be non-empty to satisfy the required guard in the template.
+# In real deployments this secret must be pre-created before installing the chart.
 patSecret:
-  name: "test-pat"
+  name: "ci-test-pat-secret"
   key: pat
 
 kubeconfig:
   enabled: true
-  secretName: "test-kubeconfig"
+  secretName: "ci-test-kubeconfig"
 
 ssh:
   enabled: true
-  secretName: "test-ssh"
+  secretName: "ci-test-ssh"
 
 toolsInit:
   enabled: true

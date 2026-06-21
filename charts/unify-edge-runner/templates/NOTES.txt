@@ -16,8 +16,9 @@ Check init container logs (registration):
 
 If registration fails (PAT expired or invalid):
   1. Update the PAT secret:
-       kubectl create secret generic {{ include "edge-runner.patSecretName" . }} \
+       kubectl create secret generic {{ .Values.patSecret.name }} \
          --from-literal=pat='YOUR_NEW_PAT' \
+         --namespace {{ .Release.Namespace }} \
          --dry-run=client -o yaml | kubectl apply -f -
   2. Restart the StatefulSet:
        kubectl rollout restart statefulset/{{ include "edge-runner.fullname" . }} -n {{ .Release.Namespace }}
