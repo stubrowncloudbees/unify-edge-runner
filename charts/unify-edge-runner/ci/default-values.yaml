@@ -6,6 +6,7 @@ replicaCount: 1
 
 runner:
   orgId: "00000000-0000-0000-0000-000000000000"
+  name: "ci-test-runner"
   labels: "self-hosted,ci-test"
   workingDir: /opt/runner
 

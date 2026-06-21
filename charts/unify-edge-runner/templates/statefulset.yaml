@@ -91,9 +91,13 @@ spec:
               fi
 
               echo "[register] Configuring runner..."
+              REPLICA_INDEX=$(hostname | grep -o '[0-9]*$')
+              RUNNER_NAME="{{ .Values.runner.name }}-${REPLICA_INDEX}"
+              echo "[register] Runner name: $RUNNER_NAME"
               echo "$TOKEN" | "$BINARY" configure \
                 --working-dir "$WORKING_DIR" \
                 --labels "{{ .Values.runner.labels }}" \
+                --name "$RUNNER_NAME" \
                 --token-stdin
 
               echo "[register] Registration complete."

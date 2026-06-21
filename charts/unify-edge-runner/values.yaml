@@ -23,6 +23,11 @@ runner:
   # Placeholder — replace with your org ID when deploying.
   orgId: "YOUR-ORG-ID-HERE"
 
+  # Runner name prefix. Each replica registers as <name>-<index> in Unify.
+  # Example: name "k8s-home" with 3 replicas registers as k8s-home-0, k8s-home-1, k8s-home-2.
+  # Choose a name that is meaningful and unique within your Unify organisation.
+  name: "runner"
+
   # Runner labels (comma-separated).
   # Jobs are dispatched to runners that match ALL required labels.
   # Example: "self-hosted,k8s,arm64"
