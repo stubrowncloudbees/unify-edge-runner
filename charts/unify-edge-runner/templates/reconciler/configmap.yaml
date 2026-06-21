@@ -31,6 +31,8 @@ data:
     #   K8S_API              - Kubernetes API server (defaults to in-cluster)
     #   K8S_TOKEN            - ServiceAccount token (defaults to in-cluster path)
     #   K8S_CA               - CA cert path (defaults to in-cluster path)
+    #
+    # PVC naming convention: runner-data-<STATEFULSET_NAME>-<index>
     # ---------------------------------------------------------------------------
 
     apk add --no-cache curl jq > /dev/null 2>&1
@@ -157,10 +159,131 @@ data:
         fi
       done
 
+      echo "[reconciler] Unify cleanup complete."
+
+      # -------------------------------------------------------------------------
+      # Step 7: Delete orphaned PVCs for stale replicas
+      # PVC names: runner-data-<STATEFULSET_NAME>-<index>
+      # -------------------------------------------------------------------------
+      echo "[reconciler] Cleaning up orphaned PVCs..."
+
+      echo "${STALE_JSON}" | jq -r '.[].name' | while IFS= read -r name; do
+        INDEX=$(echo "${name}" | grep -o '[0-9]*$')
+        PVC_NAME="runner-data-${STATEFULSET_NAME}-${INDEX}"
+
+        echo "[reconciler] Deleting PVC: ${PVC_NAME}"
+
+        HTTP_STATUS=$(curl -sS -o /tmp/pvc_response.json -w "%{http_code}" \
+          -X DELETE \
+          --cacert "${K8S_CA}" \
+          -H "Authorization: Bearer ${K8S_TOKEN}" \
+          "${K8S_API}/api/v1/namespaces/${NAMESPACE}/persistentvolumeclaims/${PVC_NAME}")
+
+        if [ "${HTTP_STATUS}" = "200" ] || [ "${HTTP_STATUS}" = "202" ]; then
+          echo "[reconciler] Deleted PVC: ${PVC_NAME}"
+        elif [ "${HTTP_STATUS}" = "404" ]; then
+          echo "[reconciler] PVC already gone: ${PVC_NAME} (skipping)"
+        else
+          echo "[reconciler] WARNING: Unexpected HTTP ${HTTP_STATUS} deleting PVC ${PVC_NAME}"
+        fi
+      done
+
       echo "[reconciler] Cleanup complete."
       exit 0
     fi
 
     echo "[reconciler] ERROR: Unknown mode: ${MODE}. Expected audit or cleanup."
     exit 1
+
+  teardown.sh: |
+    #!/bin/sh
+    set -eu
+
+    # ---------------------------------------------------------------------------
+    # Unify Edge Runner teardown
+    #
+    # Runs as a Helm pre-delete hook on helm uninstall.
+    # Deregisters ALL runners matching this deployment's name prefix from Unify.
+    # Deletes ALL PVCs for this StatefulSet (all indices).
+    #
+    # This is a full teardown — not stale-only. All runners and PVCs are removed.
+    # ---------------------------------------------------------------------------
+
+    apk add --no-cache curl jq > /dev/null 2>&1
+
+    K8S_API="${K8S_API:-https://kubernetes.default.svc}"
+    K8S_TOKEN="${K8S_TOKEN:-$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)}"
+    K8S_CA="${K8S_CA:-/var/run/secrets/kubernetes.io/serviceaccount/ca.crt}"
+
+    echo "[teardown] Deregistering all runners with prefix: ${RUNNER_NAME_PREFIX}-"
+
+    RUNNERS_RESPONSE=$(curl -sS -X GET \
+      "${UNIFY_API_URL}/v1/organizations/${ORG_ID}/edge/runners" \
+      -H "Authorization: Bearer ${PAT}" \
+      -H "Content-Type: application/json")
+
+    if ! echo "${RUNNERS_RESPONSE}" | jq -e '.runners' > /dev/null 2>&1; then
+      echo "[teardown] WARNING: Could not list runners from Unify — skipping Unify cleanup."
+    else
+      MATCHING=$(echo "${RUNNERS_RESPONSE}" | jq \
+        --arg prefix "${RUNNER_NAME_PREFIX}-" \
+        '[.runners[] | select(.name | startswith($prefix))]')
+
+      COUNT=$(echo "${MATCHING}" | jq 'length')
+      echo "[teardown] Found ${COUNT} runner(s) to deregister."
+
+      echo "${MATCHING}" | jq -c '.[]' | while IFS= read -r runner; do
+        NAME=$(echo "${runner}" | jq -r '.name')
+        ID=$(echo "${runner}" | jq -r '.id')
+
+        echo "[teardown] Deleting runner: ${NAME} (${ID})"
+
+        HTTP_STATUS=$(curl -sS -o /tmp/del_runner.json -w "%{http_code}" \
+          -X DELETE \
+          "${UNIFY_API_URL}/v1/organizations/${ORG_ID}/edge/runners/${ID}" \
+          -H "Authorization: Bearer ${PAT}")
+
+        if [ "${HTTP_STATUS}" = "200" ]; then
+          echo "[teardown] Deleted: ${NAME}"
+        elif [ "${HTTP_STATUS}" = "500" ]; then
+          MSG=$(jq -r '.message // "unknown"' /tmp/del_runner.json 2>/dev/null || echo "unknown")
+          if echo "${MSG}" | grep -q "record not found"; then
+            echo "[teardown] Already removed: ${NAME} (skipping)"
+          else
+            echo "[teardown] WARNING: Error deleting ${NAME}: ${MSG}"
+          fi
+        else
+          echo "[teardown] WARNING: Unexpected HTTP ${HTTP_STATUS} deleting ${NAME}"
+        fi
+      done
+    fi
+
+    echo "[teardown] Deleting PVCs for StatefulSet: ${STATEFULSET_NAME}"
+
+    PVC_RESPONSE=$(curl -sS --cacert "${K8S_CA}" \
+      -H "Authorization: Bearer ${K8S_TOKEN}" \
+      "${K8S_API}/api/v1/namespaces/${NAMESPACE}/persistentvolumeclaims")
+
+    echo "${PVC_RESPONSE}" | jq -r \
+      --arg prefix "runner-data-${STATEFULSET_NAME}-" \
+      '.items[] | select(.metadata.name | startswith($prefix)) | .metadata.name' | \
+      while IFS= read -r pvc; do
+        echo "[teardown] Deleting PVC: ${pvc}"
+
+        HTTP_STATUS=$(curl -sS -o /tmp/del_pvc.json -w "%{http_code}" \
+          -X DELETE \
+          --cacert "${K8S_CA}" \
+          -H "Authorization: Bearer ${K8S_TOKEN}" \
+          "${K8S_API}/api/v1/namespaces/${NAMESPACE}/persistentvolumeclaims/${pvc}")
+
+        if [ "${HTTP_STATUS}" = "200" ] || [ "${HTTP_STATUS}" = "202" ]; then
+          echo "[teardown] Deleted PVC: ${pvc}"
+        elif [ "${HTTP_STATUS}" = "404" ]; then
+          echo "[teardown] PVC already gone: ${pvc} (skipping)"
+        else
+          echo "[teardown] WARNING: Unexpected HTTP ${HTTP_STATUS} deleting PVC ${pvc}"
+        fi
+      done
+
+    echo "[teardown] Teardown complete."
 {{- end }}

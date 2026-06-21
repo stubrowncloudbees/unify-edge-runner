@@ -5,7 +5,7 @@ description: >
   as a Kubernetes StatefulSet. Supports idempotent registration, pluggable
   tool injection, and optional kubeconfig/SSH mounts.
 type: application
-version: 0.2.0
+version: 0.3.0
 appVersion: "latest"
 keywords:
   - cloudbees

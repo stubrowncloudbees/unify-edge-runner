@@ -42,4 +42,6 @@ jobs:
           echo "$OUTPUT" | grep -q "kind: RoleBinding"         && echo "PASS: RoleBinding present"
           echo "$OUTPUT" | grep -q "kind: ConfigMap"           && echo "PASS: ConfigMap present"
           echo "$OUTPUT" | grep -q "helm.sh/hook"              && echo "PASS: hook annotation present"
+          echo "$OUTPUT" | grep -q "pre-delete"               && echo "PASS: pre-delete teardown hook present"
+          echo "$OUTPUT" | grep -q "teardown.sh"              && echo "PASS: teardown script present"
           echo "$OUTPUT" | grep -q "cloudbees.io/architecture" && echo "PASS: v2 label present"

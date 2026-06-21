@@ -176,11 +176,8 @@ affinity: {}
 #   - CronJob: runs periodically to catch drift
 #
 # Mode:
-#   audit   — log stale runners, no deletion (default, safe)
-#   cleanup — delete stale runners from Unify
-#
-# Cleanup mode must be set explicitly:
-#   helm upgrade ... --set reconciler.mode=cleanup
+#   audit   — log stale runners, no deletion
+#   cleanup — delete stale runners from Unify and remove their PVCs (default)
 #
 # The reconciler only deletes runners that:
 #   - match the runner.name prefix
@@ -190,11 +187,10 @@ affinity: {}
 reconciler:
   enabled: true
 
-  # audit (default) or cleanup.
+  # audit or cleanup (default).
   # audit: log stale runners, no deletion.
-  # cleanup: delete stale runners from Unify.
-  # Cleanup must be set explicitly — audit is always the safe default.
-  mode: audit
+  # cleanup: delete stale runners from Unify and remove their PVCs.
+  mode: cleanup
 
   image:
     repository: alpine

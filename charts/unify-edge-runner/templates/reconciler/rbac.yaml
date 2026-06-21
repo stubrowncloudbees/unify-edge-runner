@@ -17,6 +17,9 @@ rules:
     resources: ["statefulsets"]
     resourceNames: ["{{ include "edge-runner.fullname" . }}"]
     verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["list", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

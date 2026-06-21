@@ -1,0 +1,41 @@
+{{- if .Values.reconciler.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "edge-runner.fullname" . }}-teardown
+  labels:
+    {{- include "edge-runner.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-delete
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "0"
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 120
+  template:
+    metadata:
+      labels:
+        {{- include "edge-runner.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: teardown
+        cloudbees.io/architecture: v2
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "edge-runner.fullname" . }}-reconciler
+      containers:
+        - name: teardown
+          image: "{{ .Values.reconciler.image.repository }}:{{ .Values.reconciler.image.tag }}"
+          imagePullPolicy: {{ .Values.reconciler.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - /scripts/teardown.sh
+          env:
+            {{- include "edge-runner.reconcilerEnv" . | nindent 12 }}
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+      volumes:
+        - name: scripts
+          configMap:
+            name: {{ include "edge-runner.fullname" . }}-reconciler
+            defaultMode: 0755
+{{- end }}
