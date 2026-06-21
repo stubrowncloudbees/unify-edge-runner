@@ -1,7 +1,6 @@
 apiVersion: automation.cloudbees.io/v1alpha1
 kind: Workflow
 name: chart-validation
-
 on:
   push:
     branches:
@@ -9,27 +8,24 @@ on:
   pull_request:
     branches:
       - main
-
+  workflow_dispatch:
 jobs:
   lint-and-template:
     steps:
       - name: Checkout
         uses: cloudbees-io/checkout@v1
-
       - name: Install Helm
         uses: cloudbees-io/run-script@v1
         with:
           run: |
             curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
             helm version
-
       - name: Helm lint
         uses: cloudbees-io/run-script@v1
         with:
           run: |
             helm lint charts/unify-edge-runner \
               --values charts/unify-edge-runner/ci/default-values.yaml
-
       - name: Helm template
         uses: cloudbees-io/run-script@v1
         with:
@@ -37,7 +33,6 @@ jobs:
             helm template test-release charts/unify-edge-runner \
               --values charts/unify-edge-runner/ci/default-values.yaml \
               --debug
-
       - name: Verify rendered StatefulSet
         uses: cloudbees-io/run-script@v1
         with:
