@@ -15,7 +15,7 @@ jobs:
   lint-and-template:
     steps:
       - name: Checkout
-        uses: cloudbees-io/checkout@v1
+        uses: cloudbees-io/checkout@v2
 
       - name: Helm lint
         uses: docker://alpine/helm:3.14.0
