@@ -75,7 +75,7 @@ image:
 # Use {arch} as a placeholder — it is substituted at runtime with amd64 or arm64
 # based on the node architecture detected via `uname -m`.
 # Example: https://downloads.example.com/cloudbees-runner/linux/{arch}/cloudbees-runner
-binaryUrl: "https://downloads.example.com/cloudbees-runner/linux/{arch}/cloudbees-runner"
+binaryUrl: "https://downloads.cloudbees.com/pub/unify-edge-runner/releases/main/linux/{arch}/cloudbees-runner"
 
 # ---------------------------------------------------------------------------
 # Kubeconfig secret reference (optional)
