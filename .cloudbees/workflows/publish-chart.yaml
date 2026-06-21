@@ -1,0 +1,50 @@
+apiVersion: automation.cloudbees.io/v1alpha1
+kind: Workflow
+name: publish-chart
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    steps:
+      - name: Checkout
+        uses: cloudbees-io/checkout@v2
+
+      - name: Package chart
+        uses: docker://alpine/helm:3.14.0
+        run: |
+          helm package charts/unify-edge-runner --destination .chart-output/
+
+      - name: Publish to GitHub Pages
+        uses: docker://alpine/git:latest
+        run: |
+          # Configure git
+          git config user.email "ci@cloudbees.com"
+          git config user.name "CloudBees CI"
+
+          # Stash the packaged chart
+          mkdir -p /tmp/chart-publish
+          cp .chart-output/*.tgz /tmp/chart-publish/
+
+          # Switch to gh-pages branch (create if it doesn't exist)
+          git fetch origin gh-pages || true
+          if git show-ref --verify --quiet refs/remotes/origin/gh-pages; then
+            git checkout gh-pages
+          else
+            git checkout --orphan gh-pages
+            git rm -rf .
+          fi
+
+          # Copy in the new chart package
+          cp /tmp/chart-publish/*.tgz .
+
+          # Regenerate the index
+          helm repo index . --url https://stubrowncloudbees.github.io/unify-edge-runner
+
+          # Commit and push
+          git add index.yaml *.tgz
+          git commit -m "Publish chart $(ls /tmp/chart-publish/*.tgz | xargs basename)"
+          git push origin gh-pages

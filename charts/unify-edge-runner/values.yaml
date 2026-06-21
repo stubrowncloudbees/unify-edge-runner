@@ -33,6 +33,12 @@ runner:
   # Example: "self-hosted,k8s,arm64"
   labels: "self-hosted"
 
+  # PAT for runner registration.
+  # If set, the chart creates the secret automatically.
+  # If empty, you must pre-create the secret (see patSecret.name).
+  # NEVER commit a real PAT to values.yaml — pass via --set at install time.
+  pat: ""
+
   # Working directory inside the container.
   # The runner binary, config, and workspace live here.
   # This path is backed by the PVC for persistence across restarts.
