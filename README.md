@@ -126,6 +126,55 @@ kubectl create job reconcile-now \
   -n edge-runners
 ```
 
+## Adding tools
+
+The chart includes an optional init container extension point for injecting additional tools into the runner before jobs start. Tools are installed into a shared `/tools` volume — the runner container's `PATH` includes `/tools/bin` automatically.
+
+Enable it with a script that installs whatever your jobs need:
+
+```bash
+helm install my-runners unify-edge-runner/unify-edge-runner \
+  --namespace edge-runners \
+  --set unify.orgId='YOUR-ORG-ID' \
+  --set patSecret.name=edge-runner-pat \
+  --set toolsInit.enabled=true \
+  --set toolsInit.image=ubuntu:22.04 \
+  --set-string toolsInit.script='
+mkdir -p /tools/bin
+
+# kubectl
+curl -sL -o /tools/bin/kubectl \
+  https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl
+chmod +x /tools/bin/kubectl
+
+# helm
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 \
+  | HELM_INSTALL_DIR=/tools/bin bash
+'
+```
+
+Or use a values file for cleaner multi-line scripts:
+
+```yaml
+# my-values.yaml
+toolsInit:
+  enabled: true
+  image: ubuntu:22.04
+  script: |
+    mkdir -p /tools/bin
+    curl -sL -o /tools/bin/kubectl \
+      https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl
+    chmod +x /tools/bin/kubectl
+```
+
+```bash
+helm install my-runners unify-edge-runner/unify-edge-runner \
+  --namespace edge-runners \
+  -f my-values.yaml \
+  --set unify.orgId='YOUR-ORG-ID' \
+  --set patSecret.name=edge-runner-pat
+```
+
 ## Binary download URLs
 
 The chart downloads the runner binary at container startup. The architecture is detected automatically. Official download URLs:
