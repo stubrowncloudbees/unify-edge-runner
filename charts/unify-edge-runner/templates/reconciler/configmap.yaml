@@ -147,6 +147,9 @@ data:
 
         if [ "${HTTP_STATUS}" = "200" ]; then
           echo "[reconciler] Deleted: ${NAME}"
+        elif [ "${HTTP_STATUS}" = "400" ]; then
+          MSG=$(jq -r '.message // "unknown"' /tmp/delete_response.json 2>/dev/null || echo "unknown")
+          echo "[reconciler] Skipping ${NAME} — runner busy or invalid request: ${MSG}"
         elif [ "${HTTP_STATUS}" = "500" ]; then
           MSG=$(jq -r '.message // "unknown"' /tmp/delete_response.json 2>/dev/null || echo "unknown")
           if echo "${MSG}" | grep -q "record not found"; then
@@ -245,6 +248,9 @@ data:
 
         if [ "${HTTP_STATUS}" = "200" ]; then
           echo "[teardown] Deleted: ${NAME}"
+        elif [ "${HTTP_STATUS}" = "400" ]; then
+          MSG=$(jq -r '.message // "unknown"' /tmp/del_runner.json 2>/dev/null || echo "unknown")
+          echo "[teardown] Skipping ${NAME} — runner busy or invalid request: ${MSG}"
         elif [ "${HTTP_STATUS}" = "500" ]; then
           MSG=$(jq -r '.message // "unknown"' /tmp/del_runner.json 2>/dev/null || echo "unknown")
           if echo "${MSG}" | grep -q "record not found"; then
