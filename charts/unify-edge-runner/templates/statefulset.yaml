@@ -20,6 +20,7 @@ spec:
     metadata:
       labels:
         {{- include "edge-runner.selectorLabels" . | nindent 8 }}
+        cloudbees.io/architecture: v2
     spec:
       {{- with .Values.nodeSelector }}
       nodeSelector:
