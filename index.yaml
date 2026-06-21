@@ -1,0 +1,44 @@
+apiVersion: v1
+entries:
+  unify-edge-runner:
+  - apiVersion: v2
+    appVersion: latest
+    created: "2026-06-21T10:04:27.144054313Z"
+    description: 'Production-quality Helm chart for deploying CloudBees Unify Edge
+      Runners as a Kubernetes StatefulSet. Supports idempotent registration, pluggable
+      tool injection, and optional kubeconfig/SSH mounts. '
+    digest: 0d0933088c84eb7e0003f328d38e53431e2021a583fdfbb472fcff5cce98f02c
+    keywords:
+    - cloudbees
+    - unify
+    - edge-runner
+    - ci
+    - self-hosted
+    maintainers:
+    - name: stu-brown
+    name: unify-edge-runner
+    type: application
+    urls:
+    - https://stubrowncloudbees.github.io/unify-edge-runner/unify-edge-runner-0.1.0.tgz
+    version: 0.1.0
+  - apiVersion: v2
+    appVersion: latest
+    created: "2026-06-21T10:04:27.144394264Z"
+    description: 'Production-quality Helm chart for deploying CloudBees Unify Edge
+      Runners as a Kubernetes StatefulSet. Supports idempotent registration, pluggable
+      tool injection, and optional kubeconfig/SSH mounts. '
+    digest: 0d0933088c84eb7e0003f328d38e53431e2021a583fdfbb472fcff5cce98f02c
+    keywords:
+    - cloudbees
+    - unify
+    - edge-runner
+    - ci
+    - self-hosted
+    maintainers:
+    - name: stu-brown
+    name: unify-edge-runner
+    type: application
+    urls:
+    - https://stubrowncloudbees.github.io/unify-edge-runner/.chart-output/unify-edge-runner-0.1.0.tgz
+    version: 0.1.0
+generated: "2026-06-21T10:04:27.143545998Z"
