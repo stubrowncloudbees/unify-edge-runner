@@ -43,6 +43,13 @@ runner:
   # This path is backed by the PVC for persistence across restarts.
   workingDir: /opt/runner
 
+  # Execution mode(s) passed to `cloudbees-runner configure` (repeatable flag).
+  # Newer runner binaries fail configure outright if "docker" is requested/
+  # defaulted and no container runtime is present. Only include "docker" here
+  # if the node actually has a container runtime available.
+  executionModes:
+    - native
+
 # ---------------------------------------------------------------------------
 # PAT secret reference
 # ---------------------------------------------------------------------------

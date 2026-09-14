@@ -110,6 +110,9 @@ spec:
                 --working-dir "$WORKING_DIR" \
                 --labels "{{ .Values.runner.labels }}" \
                 --name "$RUNNER_NAME" \
+                {{- range .Values.runner.executionModes }}
+                --execution-mode {{ . }} \
+                {{- end }}
                 --token-stdin
 
               echo "[register] Registration complete."
